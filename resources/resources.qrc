@@ -1,0 +1,23 @@
+<RCC>
+    <qresource prefix="/">
+        <file>icons/home.svg</file>
+        <file>icons/drives.svg</file>
+        <file>icons/settings.svg</file>
+        <file>icons/dir.svg</file>
+        <file>icons/logo.svg</file>
+        <file>icons/default.svg</file>
+        <file>icons/tracks.svg</file>
+        <file>icons/subtitles.svg</file>
+        <file>icons/volume-high.svg</file>
+        <file>icons/volume-mid.svg</file>
+        <file>icons/volume-low.svg</file>
+        <file>icons/volume-mute.svg</file>
+        <file>icons/play.svg</file>
+        <file>icons/pause.svg</file>
+        <file>icons/check.svg</file>
+        <file>icons/search.svg</file>
+        <file>fonts/OpenSans-VariableFont.ttf</file>
+        <file>icons/hourglass.svg</file>
+        <file>icons/empty.svg</file>
+    </qresource>
+</RCC>
