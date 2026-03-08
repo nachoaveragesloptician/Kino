@@ -102,6 +102,26 @@ TrackPopup::TrackPopup(QWidget *parent) : QWidget(parent, Qt::Popup | Qt::Framel
             color: #1a1b26;
             font-weight: bold;
         }
+        /* --- THE FIX: Custom sleek vertical scrollbar --- */
+        QScrollBar:vertical { 
+            border: none; 
+            background: transparent; 
+            width: 6px; 
+            margin: 0px; 
+        }
+        QScrollBar::handle:vertical { 
+            background: #414868; 
+            border-radius: 3px; 
+        }
+        QScrollBar::handle:vertical:hover { 
+            background: #7aa2f7; 
+        }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { 
+            height: 0px; 
+        }
+        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { 
+            background: none; 
+        }
     )");
     layout->addWidget(m_list);
 

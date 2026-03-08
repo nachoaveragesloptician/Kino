@@ -28,9 +28,23 @@ MpvWidget::MpvWidget(QWidget *parent) : QOpenGLWidget(parent), m_mpv_gl(nullptr)
         mpv_set_option_string(m_mpv, "hwdec", "no");
     }
 
-    mpv_set_option_string(m_mpv, "cache", "yes");
-    mpv_set_option_string(m_mpv, "demuxer-max-bytes", QString::number(cacheMb * 1024 * 1024).toUtf8().constData());
+    QString audioLang = settings.value("audio_lang", "auto").toString();
+    if (audioLang != "auto" && !audioLang.isEmpty()) {
+        mpv_set_option_string(m_mpv, "alang", audioLang.toUtf8().constData());
+    }
 
+    QString subLang = settings.value("sub_lang", "eng,en").toString();
+    if (subLang != "auto" && !subLang.isEmpty()) {
+        mpv_set_option_string(m_mpv, "slang", subLang.toUtf8().constData());
+    }
+
+    mpv_set_option_string(m_mpv, "cache", "yes");
+    QByteArray cacheStr = QString("%1MiB").arg(cacheMb).toUtf8();
+    mpv_set_option_string(m_mpv, "demuxer-max-bytes", cacheStr.constData());
+    
+    QByteArray backCacheStr = QString("%1MiB").arg(cacheMb / 2).toUtf8();
+    mpv_set_option_string(m_mpv, "demuxer-max-back-bytes", backCacheStr.constData());
+    
     QString watchLaterDir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + "/Kino/watch_later";
     QDir().mkpath(watchLaterDir);
     mpv_set_option_string(m_mpv, "watch-later-directory", watchLaterDir.toUtf8().constData());

@@ -16,6 +16,7 @@
 #include <QIcon>
 #include <QImage>
 #include <QSize>
+
 void cleanUpStuckMount(const QString &path) {
     if (path.isEmpty()) return;
     QDir dir(path);
@@ -200,9 +201,9 @@ void DrivesPage::addDriveCard(const QString &name) {
     QPushButton *scanBtn = new QPushButton();
     QPixmap scanPix = QIcon(":/icons/search.svg").pixmap(24, 24);
     QImage img = scanPix.toImage();
-        img.invertPixels(QImage::InvertRgb);
-        scanBtn->setIcon(QIcon(QPixmap::fromImage(img)));
-        scanBtn->setIconSize(QSize(20, 20));
+    img.invertPixels(QImage::InvertRgb);
+    scanBtn->setIcon(QIcon(QPixmap::fromImage(img)));
+    scanBtn->setIconSize(QSize(20, 20));
     scanBtn->setCursor(Qt::PointingHandCursor);
     scanBtn->setStyleSheet("QPushButton { background: #1a1b26; border-radius: 8px; border: 1px solid #414868; color: white; font-size: 16px; } QPushButton:hover { background: #414868; border: 1px solid #7aa2f7; }");
     
@@ -251,7 +252,24 @@ void DrivesPage::startMount(const QString &remote) {
     QString nativeMountDir = mountDir;
 #endif
 
-    proc->start(execPath, QStringList() << "mount" << (remote + ":") << nativeMountDir << "--vfs-cache-mode" << "full");
+    QStringList args;
+    args << "mount" << (remote + ":") << nativeMountDir;
+
+    QString confPath = findRcloneConfig();
+    if (!confPath.isEmpty()) {
+        args << "--config" << confPath;
+    }
+
+    QSettings settings("Kino", "AppConfig");
+    QString customFlags = settings.value("rclone_flags", "").toString();
+    
+    if (!customFlags.isEmpty()) {
+        args.append(customFlags.split(" ", Qt::SkipEmptyParts));
+    } else {
+        args << "--vfs-cache-mode" << "full";
+    }
+
+    proc->start(execPath, args);
     
     m_drives[remote].process = proc;
     m_drives[remote].mountPath = nativeMountDir;

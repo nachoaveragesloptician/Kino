@@ -18,6 +18,7 @@ TmdbClient::TmdbClient(QObject *parent) : QObject(parent) {
 
 void TmdbClient::fetchPoster(const MediaInfo &info, const QString &id) {
     QSettings settings("Kino", "AppConfig");
+    QString metaLang = settings.value("meta_lang", "en-US").toString();
     QString apiKey = settings.value("tmdb_api_key", "").toString().trimmed();
     if (apiKey.isEmpty()) return;
 
@@ -27,6 +28,7 @@ void TmdbClient::fetchPoster(const MediaInfo &info, const QString &id) {
     QUrlQuery query;
     query.addQueryItem("api_key", apiKey);
     query.addQueryItem("query", info.isSeries ? info.seriesName : info.title);
+    query.addQueryItem("language", metaLang);
     url.setQuery(query);
 
     auto processJsonResponse = [this, id](const QByteArray &responseData) {
