@@ -26,13 +26,17 @@ void ScanWorker::process() {
         QStringList rawBlack = settings.value(driveName + "_blacklist", "").toString().split("\n", Qt::SkipEmptyParts);
 
         QStringList whitelist, blacklist;
-        for (QString &w : rawWhite) {
+        for (QString w : rawWhite) {
             w = w.trimmed().toLower();
+            while (w.startsWith("/")) w.remove(0, 1);
+            if (w.isEmpty()) continue;
             if (!w.endsWith("/")) w += "/";
             whitelist.append(w);
         }
-        for (QString &b : rawBlack) {
+        for (QString b : rawBlack) {
             b = b.trimmed().toLower();
+            while (b.startsWith("/")) b.remove(0, 1);
+            if (b.isEmpty()) continue;
             if (!b.endsWith("/")) b += "/";
             blacklist.append(b);
         }
@@ -59,12 +63,14 @@ void ScanWorker::scanRecursive(const QDir &dir, const QString &rootMount, QList<
     QStringList allowed = { "mp4", "mkv", "avi", "mov", "webm", "flv", "wmv", "m4v" };
 
     for (const QFileInfo &info : list) {
+        QString relativePath = QDir(rootMount).relativeFilePath(info.filePath()).toLower();
+
         if (info.isDir()) {
-            QString relativePath = QDir(rootMount).relativeFilePath(info.filePath()).toLower() + "/";
+            QString dirPath = relativePath + "/"; 
 
             bool isBlacklisted = false;
             for (const QString &b : blacklist) {
-                if (relativePath.startsWith(b)) {
+                if (dirPath.startsWith(b)) {
                     isBlacklisted = true;
                     break;
                 }
@@ -74,7 +80,7 @@ void ScanWorker::scanRecursive(const QDir &dir, const QString &rootMount, QList<
             if (!whitelist.isEmpty()) {
                 bool allowedToEnter = false;
                 for (const QString &w : whitelist) {
-                    if (relativePath.startsWith(w) || w.startsWith(relativePath)) {
+                    if (dirPath.startsWith(w) || w.startsWith(dirPath)) {
                         allowedToEnter = true;
                         break;
                     }
@@ -85,6 +91,15 @@ void ScanWorker::scanRecursive(const QDir &dir, const QString &rootMount, QList<
             scanRecursive(QDir(info.filePath()), rootMount, buffer, whitelist, blacklist);
         } 
         else if (info.isFile()) {
+            bool isFileBlacklisted = false;
+            for (const QString &b : blacklist) {
+                if (relativePath.startsWith(b)) {
+                    isFileBlacklisted = true;
+                    break;
+                }
+            }
+            if (isFileBlacklisted) continue;
+
             if (allowed.contains(info.suffix().toLower())) {
                 VideoFile vf;
                 vf.name = info.fileName();

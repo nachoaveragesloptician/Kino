@@ -23,8 +23,11 @@
 #include <QScrollArea>
 #include <QDate>
 #include <QFileInfo>
-#include <QScrollBar>
 #include <QGraphicsOpacityEffect>
+#include <QListWidget>
+#include <QDialog>
+#include <QDialogButtonBox>
+
 FileView::FileView(QWidget *parent) : QWidget(parent)
 {
     QHBoxLayout *mainLayout = new QHBoxLayout(this);
@@ -552,6 +555,10 @@ void FileView::setMounts(const QStringList &mountPaths) {
 }
 
 void FileView::loadFromCache() {
+    m_isDetailView = false;
+    if (m_backBtn) m_backBtn->hide();
+    if (m_titleLabel) m_titleLabel->setText("Library");
+
     QFile file(m_cacheFilePath);
     if (file.open(QIODevice::ReadOnly)) {
         QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
@@ -582,7 +589,6 @@ void FileView::loadFromCache() {
         if (m_currentMounts.isEmpty()) {
             m_emptyTextLabel->setText("No drives mounted.\nGo to the Drives tab to mount one!");
             
-          
             QPixmap pix = QIcon(":/icons/empty.svg").pixmap(80, 80);
             if (!pix.isNull()) {
                 QImage img = pix.toImage();
@@ -609,12 +615,6 @@ void FileView::loadFromCache() {
         m_emptyWidget->hide();
         m_view->show();
         updateGridSize();
-        
-        QModelIndex firstIndex = m_proxy->index(0, 0);
-        if (firstIndex.isValid()) {
-            m_view->setCurrentIndex(firstIndex);
-            onItemClicked(firstIndex);
-        }
     }
 }
 
@@ -652,13 +652,11 @@ void FileView::showRescanMenu() {
     for (const QString &mount : m_currentMounts) {
         QString driveName = QDir(mount).dirName(); 
         QAction *act = menu.addAction(QString("Rescan %1").arg(driveName));
-        act->setIcon(QIcon(":/icons/drives.svg")); 
         connect(act, &QAction::triggered, this, [this, mount]() { startScan(QStringList() << mount); });
     }
     if (m_currentMounts.size() > 1) {
         menu.addSeparator();
         QAction *allAct = menu.addAction("Rescan All Mounted");
-        allAct->setIcon(QIcon(":/icons/home.svg")); 
         connect(allAct, &QAction::triggered, this, [this]() { startScan(m_currentMounts); });
     }
     menu.exec(m_rescanBtn->mapToGlobal(QPoint(0, m_rescanBtn->height() + 8)));
@@ -704,8 +702,6 @@ void FileView::stopScan() {
 }
 
 void FileView::onBatchFound(const QList<VideoFile> &files) {
-    bool isFirstBatch = m_model->rowCount() == 0;
-    
     for (const VideoFile &vf : files) {
         if (!m_knownPaths.contains(vf.path)) {
             MediaInfo info = MediaParser::parse(vf.name, vf.path);
@@ -719,36 +715,45 @@ void FileView::onBatchFound(const QList<VideoFile> &files) {
             if (!m_groupItems.contains(stackKey)) {
                 QStandardItem *item = new QStandardItem(info.isSeries ? info.seriesName : info.title);
                 item->setData(stackKey, FilePathRole);
-                item->setData(false, IsStackRole); 
+                
+                item->setData(info.isSeries, IsStackRole); 
                 item->setData(true, IsDefaultIconRole);
-                if (!info.year.isEmpty()) item->setData(info.year, SubtitleRole);
+                
+                if (info.isSeries) {
+                    item->setData("1 Episode", SubtitleRole);
+                } else if (!info.year.isEmpty()) {
+                    item->setData(info.year, SubtitleRole);
+                }
+                
                 item->setIcon(QIcon(":/icons/default.svg"));
                 m_model->appendRow(item);
                 m_groupItems[stackKey] = item;
                 
                 m_tmdb->fetchPoster(info, stackKey); 
             } else {
-                m_groupItems[stackKey]->setData(true, IsStackRole);
-                int count = m_mediaGroups[stackKey].size();
-                m_groupItems[stackKey]->setData(QString("%1 Files Available").arg(count), SubtitleRole);
+                if (info.isSeries) {
+                    QSet<QString> uniqueEpisodes;
+                    for (const auto &f : m_mediaGroups[stackKey]) {
+                        MediaInfo epInfo = MediaParser::parse(f.name, f.path);
+                        QString epKey = epInfo.seasonEpisode.isEmpty() ? f.name : epInfo.seasonEpisode;
+                        uniqueEpisodes.insert(epKey);
+                    }
+                    m_groupItems[stackKey]->setData(QString("%1 Episodes").arg(uniqueEpisodes.size()), SubtitleRole);
+                } else {
+                    int count = m_mediaGroups[stackKey].size();
+                    m_groupItems[stackKey]->setData(QString("%1 Versions").arg(count), SubtitleRole);
+                }
             }
             m_knownPaths.insert(vf.path);
         }
     }
-    if (!m_isDetailView) appendToCache(files);
+    
+    appendToCache(files);
     
     if (m_model->rowCount() > 0) {
         m_emptyWidget->hide();
         m_view->show();
         updateGridSize();
-        
-        if (isFirstBatch) {
-            QModelIndex firstIndex = m_proxy->index(0, 0);
-            if (firstIndex.isValid()) {
-                m_view->setCurrentIndex(firstIndex);
-                onItemClicked(firstIndex);
-            }
-        }
     }
 }
 
@@ -799,59 +804,184 @@ void FileView::onItemClicked(const QModelIndex &index) {
 
     updateSidebar(index); 
 
+    QString dialogStyle = R"(
+        QDialog { background-color: #16161e; border: 1px solid #2f3549; border-radius: 8px; }
+        QListWidget { background: #1f2335; color: #c0caf5; border: 1px solid #2f3549; border-radius: 6px; padding: 4px; outline: none; }
+        QListWidget::item { padding: 12px; border-bottom: 1px solid #16161e; border-radius: 4px; }
+        QListWidget::item:selected { background: #2f3549; color: #7aa2f7; font-weight: bold; }
+        QListWidget::item:hover:!selected { background: #292e42; }
+        
+        QPushButton { background: #2f3549; color: #c0caf5; border-radius: 6px; padding: 8px 24px; font-weight: bold; font-size: 13px; border: none; }
+        QPushButton:hover { background: #414868; }
+        QPushButton#playBtn { background: #7aa2f7; color: #1a1b26; }
+        QPushButton#playBtn:hover { background: #89b4fa; }
+
+        /* Sleek Minimalist Scrollbars */
+        QScrollBar:vertical { border: none; background: transparent; width: 8px; margin: 2px; }
+        QScrollBar:horizontal { border: none; background: transparent; height: 8px; margin: 2px; }
+        QScrollBar::handle:vertical, QScrollBar::handle:horizontal { background: #414868; border-radius: 4px; min-height: 20px; min-width: 20px; }
+        QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover { background: #7aa2f7; }
+        QScrollBar::add-line, QScrollBar::sub-line { width: 0px; height: 0px; }
+        QScrollBar::add-page, QScrollBar::sub-page { background: none; }
+    )";
+
     if (m_isDetailView) {
-        m_currentPlayPath = id;
+        QStringList multiPaths = index.data(Qt::UserRole + 50).toStringList();
+        QStringList multiNames = index.data(Qt::UserRole + 51).toStringList();
+
         m_currentPlayTitle = index.data(Qt::DisplayRole).toString();
         QVariant v = index.data(BackdropRole);
         if (v.canConvert<QPixmap>()) m_currentBackdrop = v.value<QPixmap>();
-        
-        requestMediaInfo(id, m_currentPlayTitle);
-        
-    } else {
-        if (isStack) {
-            QVariant parentTmdb = index.data(TmdbDataRole);
-            QVariant parentBackdrop = index.data(BackdropRole);
-            QIcon parentIcon = index.data(Qt::DecorationRole).value<QIcon>(); 
 
-            m_mainLibraryItems.clear();
-            while (m_model->rowCount() > 0) m_mainLibraryItems.append(m_model->takeRow(0).at(0));
+        if (multiPaths.size() > 1) {
+            QDialog dialog(this);
+            dialog.setWindowTitle("Select Version");
+            dialog.setMinimumWidth(600);
+            dialog.setMinimumHeight(350);
+            dialog.setStyleSheet(dialogStyle);
+
+            QVBoxLayout *layout = new QVBoxLayout(&dialog);
+            layout->setContentsMargins(15, 15, 15, 15);
+            layout->setSpacing(15);
+
+            QListWidget *list = new QListWidget();
+            for (const QString &n : multiNames) list->addItem(n);
+            list->setCurrentRow(0); 
+            connect(list, &QListWidget::itemDoubleClicked, [&dialog]() { dialog.accept(); });
+            layout->addWidget(list);
             
-            m_isDetailView = true;
-            m_backBtn->show();
+            // Custom Button Layout (No OS Emojis!)
+            QHBoxLayout *btnLayout = new QHBoxLayout();
+            btnLayout->addStretch();
+            
+            QPushButton *cancelBtn = new QPushButton("Cancel");
+            QPushButton *playBtn = new QPushButton("Play");
+            playBtn->setObjectName("playBtn"); // Targets the bright blue CSS
+            
+            connect(cancelBtn, &QPushButton::clicked, &dialog, &QDialog::reject);
+            connect(playBtn, &QPushButton::clicked, &dialog, &QDialog::accept);
+            
+            btnLayout->addWidget(cancelBtn);
+            btnLayout->addWidget(playBtn);
+            layout->addLayout(btnLayout);
 
-            QList<VideoFile> files = m_mediaGroups[id];
-            std::sort(files.begin(), files.end(), [](const VideoFile &a, const VideoFile &b){ return a.name < b.name; });
-
-            for (const auto &f : files) {
-                MediaInfo info = MediaParser::parse(f.name, f.path);
-                QStandardItem *subItem = new QStandardItem(info.isSeries ? info.seasonEpisode : f.name);
-                subItem->setData(f.path, FilePathRole);
-                subItem->setData(false, IsStackRole);
-                subItem->setData(false, IsDefaultIconRole);
-                subItem->setData(formatMediaQuality(f.name), SubtitleRole);
-                subItem->setIcon(parentIcon);
-                subItem->setData(parentBackdrop, BackdropRole);
-                subItem->setData(parentTmdb, TmdbDataRole); 
-                m_model->appendRow(subItem);
+            if (dialog.exec() == QDialog::Accepted && list->currentRow() >= 0) {
+                m_currentPlayPath = multiPaths[list->currentRow()];
+                requestMediaInfo(m_currentPlayPath, m_currentPlayTitle);
             }
-            updateGridSize();
-            
-            if (!files.isEmpty()) {
-                m_currentPlayPath = files[0].path;
-                m_currentPlayTitle = m_model->item(0)->text();
-                m_currentBackdrop = parentBackdrop.value<QPixmap>();
-                updateSidebar(m_proxy->mapFromSource(m_model->index(0, 0))); 
-                requestMediaInfo(files[0].path, files[0].name);
-            }
-            
         } else {
-            if (m_mediaGroups.contains(id) && !m_mediaGroups[id].isEmpty()) {
-                m_currentPlayPath = m_mediaGroups[id][0].path; 
-                requestMediaInfo(m_currentPlayPath, m_mediaGroups[id][0].name);
+            m_currentPlayPath = multiPaths.isEmpty() ? id : multiPaths.first();
+            requestMediaInfo(m_currentPlayPath, m_currentPlayTitle);
+        }
+        
+    } else if (isStack) {
+        QVariant parentTmdb = index.data(TmdbDataRole);
+        QVariant parentBackdrop = index.data(BackdropRole);
+        QIcon parentIcon = index.data(Qt::DecorationRole).value<QIcon>(); 
+
+        m_mainLibraryItems.clear();
+        while (m_model->rowCount() > 0) m_mainLibraryItems.append(m_model->takeRow(0).at(0));
+        
+        m_isDetailView = true;
+        m_backBtn->show();
+
+        QList<VideoFile> files = m_mediaGroups[id];
+        
+        QMap<QString, QList<VideoFile>> episodeGroups;
+        for (const auto &f : files) {
+            MediaInfo info = MediaParser::parse(f.name, f.path);
+            QString epKey = info.isSeries ? info.seasonEpisode : f.name;
+            if (epKey.isEmpty()) epKey = f.name; 
+            episodeGroups[epKey].append(f);
+        }
+
+        QStringList epKeys = episodeGroups.keys();
+        epKeys.sort();
+
+        for (const QString &epKey : epKeys) {
+            QList<VideoFile> epFiles = episodeGroups[epKey];
+            
+            QStringList multiPaths, multiNames;
+            for (const auto &ef : epFiles) {
+                multiPaths.append(ef.path);
+                multiNames.append(ef.name);
             }
+            
+            QStandardItem *subItem = new QStandardItem(epKey);
+            subItem->setData(multiPaths.first(), FilePathRole); 
+            subItem->setData(multiPaths, Qt::UserRole + 50);    
+            subItem->setData(multiNames, Qt::UserRole + 51);    
+            subItem->setData(false, IsStackRole);
+            subItem->setData(false, IsDefaultIconRole);
+            
+            if (epFiles.size() > 1) {
+                subItem->setData(QString("%1 Versions").arg(epFiles.size()), SubtitleRole);
+            } else {
+                subItem->setData(formatMediaQuality(epFiles.first().name), SubtitleRole);
+            }
+            
+            subItem->setIcon(parentIcon);
+            subItem->setData(parentBackdrop, BackdropRole);
+            subItem->setData(parentTmdb, TmdbDataRole); 
+            m_model->appendRow(subItem);
+        }
+        updateGridSize();
+        
+        if (!epKeys.isEmpty()) {
+            QString firstEp = epKeys.first();
+            m_currentPlayPath = episodeGroups[firstEp].first().path;
+            m_currentPlayTitle = m_model->item(0)->text();
+            m_currentBackdrop = parentBackdrop.value<QPixmap>();
+            updateSidebar(m_proxy->mapFromSource(m_model->index(0, 0))); 
+            requestMediaInfo(m_currentPlayPath, episodeGroups[firstEp].first().name);
+        }
+            
+    } else {
+        if (m_mediaGroups.contains(id) && !m_mediaGroups[id].isEmpty()) {
+            QList<VideoFile> movieFiles = m_mediaGroups[id];
             m_currentPlayTitle = index.data(Qt::DisplayRole).toString();
             QVariant v = index.data(BackdropRole);
             if (v.canConvert<QPixmap>()) m_currentBackdrop = v.value<QPixmap>();
+
+            if (movieFiles.size() > 1) {
+                QDialog dialog(this);
+                dialog.setWindowTitle("Select Version");
+                dialog.setMinimumWidth(600);
+                dialog.setMinimumHeight(350);
+                dialog.setStyleSheet(dialogStyle);
+
+                QVBoxLayout *layout = new QVBoxLayout(&dialog);
+                layout->setContentsMargins(15, 15, 15, 15);
+                layout->setSpacing(15);
+
+                QListWidget *list = new QListWidget();
+                for (const auto &f : movieFiles) list->addItem(f.name);
+                list->setCurrentRow(0);
+                connect(list, &QListWidget::itemDoubleClicked, [&dialog]() { dialog.accept(); });
+                layout->addWidget(list);
+                
+                QHBoxLayout *btnLayout = new QHBoxLayout();
+                btnLayout->addStretch();
+                
+                QPushButton *cancelBtn = new QPushButton("Cancel");
+                QPushButton *playBtn = new QPushButton("Play");
+                playBtn->setObjectName("playBtn");
+                
+                connect(cancelBtn, &QPushButton::clicked, &dialog, &QDialog::reject);
+                connect(playBtn, &QPushButton::clicked, &dialog, &QDialog::accept);
+                
+                btnLayout->addWidget(cancelBtn);
+                btnLayout->addWidget(playBtn);
+                layout->addLayout(btnLayout);
+
+                if (dialog.exec() == QDialog::Accepted && list->currentRow() >= 0) {
+                    m_currentPlayPath = movieFiles[list->currentRow()].path;
+                    requestMediaInfo(m_currentPlayPath, m_currentPlayTitle);
+                }
+            } else {
+                m_currentPlayPath = movieFiles[0].path; 
+                requestMediaInfo(m_currentPlayPath, m_currentPlayTitle);
+            }
         }
     }
 }
@@ -864,18 +994,23 @@ void FileView::onPlayButtonClicked() {
 
 void FileView::onBackClicked() {
     if (!m_isDetailView) return;
+    
     m_isDetailView = false;
     m_backBtn->hide();
     m_titleLabel->setText("Library");
+    
     m_model->clear();
-    for (auto *item : m_mainLibraryItems) m_model->appendRow(item);
+    for (auto *item : m_mainLibraryItems) {
+        m_model->appendRow(item);
+    }
     m_mainLibraryItems.clear();
+    
     updateGridSize();
     
     QModelIndex firstIndex = m_proxy->index(0, 0);
     if (firstIndex.isValid()) {
         m_view->setCurrentIndex(firstIndex);
-        onItemClicked(firstIndex);
+        updateSidebar(firstIndex); 
     }
 }
 

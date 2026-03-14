@@ -26,15 +26,22 @@ public:
         clean.replace('.', ' ');
         clean.replace('_', ' ');
 
-        QRegularExpression seriesRegex("(?i)(.*?)S(\\d+)E(\\d+)");
+        QRegularExpression seriesRegex("(?i)(.*?)\\bS\\s*(\\d+)\\s*E\\s*(\\d+)\\b");
         QRegularExpressionMatch seriesMatch = seriesRegex.match(clean);
         
         if (seriesMatch.hasMatch()) {
             info.isSeries = true;
             info.seriesName = seriesMatch.captured(1).trimmed();
+            QRegularExpression trailingYearRegex("\\s+(19|20)\\d{2}$");
+            info.seriesName.remove(trailingYearRegex);
+
             info.title = info.seriesName;
             
-            info.seasonEpisode = QString("S%1 E%2").arg(seriesMatch.captured(2), seriesMatch.captured(3));
+            QString s = seriesMatch.captured(2);
+            QString e = seriesMatch.captured(3);
+            if (s.length() == 1) s = "0" + s;
+            if (e.length() == 1) e = "0" + e;
+            info.seasonEpisode = QString("S%1 E%2").arg(s, e);
         } else {
             info.isSeries = false;
             QRegularExpression yearRegex("\\b(19|20)\\d{2}\\b");
