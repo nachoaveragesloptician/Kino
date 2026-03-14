@@ -16,7 +16,11 @@
 #include <QIcon>
 #include <QImage>
 #include <QSize>
-
+#include <QDialog>
+#include <QFormLayout>
+#include <QDialogButtonBox>
+#include <QLineEdit>
+#include <QPlainTextEdit>
 void cleanUpStuckMount(const QString &path) {
     if (path.isEmpty()) return;
     QDir dir(path);
@@ -50,7 +54,7 @@ DrivesPage::DrivesPage(QWidget *parent) : QWidget(parent) {
     headerLayout->setAlignment(Qt::AlignVCenter);
 
     QLabel *header = new QLabel("Cloud Drives", headerContainer);
-    header->setStyleSheet("font-size: 32px; font-weight: 800; color: #7aa2f7; background: transparent; border: none;");
+    header->setStyleSheet("font-size: 28px; font-weight: 800; color: #c0caf5; background: transparent; border: none; letter-spacing: 0.5px;");
     headerLayout->addWidget(header);
     headerLayout->addStretch();
     layout->addWidget(headerContainer);
@@ -61,21 +65,25 @@ DrivesPage::DrivesPage(QWidget *parent) : QWidget(parent) {
     contentLayout->setSpacing(20);
 
     m_statusLabel = new QLabel("Scanning...", contentWidget);
-    m_statusLabel->setStyleSheet("color: #565f89; font-style: italic;");
+    m_statusLabel->setStyleSheet("color: #565f89; font-size: 13px; font-style: italic;");
     contentLayout->addWidget(m_statusLabel);
 
     m_list = new QListWidget(contentWidget);
     m_list->setFrameShape(QFrame::NoFrame);
     m_list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     m_list->verticalScrollBar()->setSingleStep(20);
-    m_list->setFlow(QListView::LeftToRight); 
-    m_list->setWrapping(true);
-    m_list->setSpacing(15);
+    m_list->setSelectionMode(QAbstractItemView::NoSelection);
     m_list->setStyleSheet(R"(
-        QListWidget { background: transparent; outline: none; border: none; }
-        QScrollBar:vertical { border: none; background: transparent; width: 8px; margin: 0px; }
-        QScrollBar:handle:vertical { background: #414868; min-height: 40px; border-radius: 4px; }
-        QScrollBar:handle:vertical:hover { background: #7aa2f7; }
+        QListWidget { 
+            background: rgba(30, 33, 46, 0.4); 
+            outline: none; 
+            border: 1px solid rgba(255, 255, 255, 0.05); 
+            border-radius: 8px;
+        }
+        QListWidget::item { border-bottom: 1px solid rgba(255, 255, 255, 0.02); }
+        QScrollBar:vertical { border: none; background: transparent; width: 6px; margin: 0px; }
+        QScrollBar:handle:vertical { background: #292e42; min-height: 40px; border-radius: 3px; }
+        QScrollBar:handle:vertical:hover { background: #414868; }
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
         QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
     )");
@@ -140,7 +148,7 @@ void DrivesPage::loadRemotes() {
         return;
     }
     
-    m_statusLabel->setText("Loaded from: " + QDir::toNativeSeparators(configPath)); 
+    m_statusLabel->setText("Loaded config: " + QDir::toNativeSeparators(configPath)); 
     QFile file(configPath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return;
     
@@ -154,35 +162,87 @@ void DrivesPage::loadRemotes() {
     }
 }
 
-void DrivesPage::addDriveCard(const QString &name) {
-    QWidget *card = new QWidget();
-    card->setFixedSize(240, 150);
-    card->setObjectName("driveCard");
-    
-    card->setStyleSheet(R"(
-        QWidget#driveCard { 
-            background-color: #1f2335; 
-            border-radius: 12px; 
-            border: 1px solid #292e42; 
+void showFilterDialog(const QString &driveName, QWidget *parent) {
+    QDialog dialog(parent);
+    dialog.setWindowTitle("Scanning Filters: " + driveName);
+    dialog.setMinimumSize(550, 600);
+    dialog.setStyleSheet(R"(
+        QDialog { background-color: #1a1b26; color: #c0caf5; }
+        QLabel { color: #c0caf5; font-weight: bold; font-size: 14px; }
+        QPlainTextEdit { 
+            background-color: #1f2335; color: white; border: 1px solid #414868; 
+            border-radius: 6px; padding: 10px; font-family: monospace; font-size: 13px;
         }
-        QWidget#driveCard:hover {
-            border: 1px solid #7aa2f7;
-            background-color: #24283b;
+        QPlainTextEdit:focus { border: 1px solid #7aa2f7; }
+        QPushButton { 
+            background: #3d59a1; color: white; border-radius: 4px; 
+            padding: 8px 16px; font-weight: bold; border: none; font-size: 13px;
         }
+        QPushButton:hover { background: #7aa2f7; color: #1a1b26; }
     )");
 
-    QVBoxLayout *lay = new QVBoxLayout(card);
-    lay->setContentsMargins(20, 20, 20, 20);
+    QVBoxLayout *layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(25, 25, 25, 25);
+    layout->setSpacing(15);
+
+    QLabel *desc = new QLabel("Enter exact relative paths, one per line.\nLeave whitelist blank to scan all folders.");
+    desc->setStyleSheet("color: #737aa2; font-style: italic; font-weight: normal; font-size: 13px;");
+    layout->addWidget(desc);
+
+    QLabel *whiteLabel = new QLabel("Whitelist (Scans ONLY these paths):");
+    layout->addWidget(whiteLabel);
+
+    QPlainTextEdit *whiteEdit = new QPlainTextEdit();
+    whiteEdit->setPlaceholderText("Movies\nTV Shows\nAnime/Dubbed");
+    layout->addWidget(whiteEdit, 1);
+
+    QLabel *blackLabel = new QLabel("Blacklist (IGNORES these paths entirely):");
+    layout->addWidget(blackLabel);
+
+    QPlainTextEdit *blackEdit = new QPlainTextEdit();
+    blackEdit->setPlaceholderText("Courses/Python\nPrivate/Photos\nExtras");
+    layout->addWidget(blackEdit, 1);
+
+    QSettings settings("Kino", "DriveFilters");
+    whiteEdit->setPlainText(settings.value(driveName + "_whitelist", "").toString());
+    blackEdit->setPlainText(settings.value(driveName + "_blacklist", "").toString());
+
+    QDialogButtonBox *box = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
+    QObject::connect(box, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(box, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(box);
+
+    if (dialog.exec() == QDialog::Accepted) {
+        settings.setValue(driveName + "_whitelist", whiteEdit->toPlainText().trimmed());
+        settings.setValue(driveName + "_blacklist", blackEdit->toPlainText().trimmed());
+    }
+}
+
+void DrivesPage::addDriveCard(const QString &name) {
+    QWidget *rowWidget = new QWidget();
+    rowWidget->setFixedHeight(64); 
+    rowWidget->setObjectName("driveRow");
+    
+    rowWidget->setStyleSheet(R"(
+        QWidget#driveRow { background-color: transparent; }
+        QWidget#driveRow:hover { background-color: rgba(255, 255, 255, 0.02); }
+    )");
+
+    QHBoxLayout *lay = new QHBoxLayout(rowWidget);
+    lay->setContentsMargins(20, 0, 20, 0);
+    lay->setSpacing(20);
 
     QLabel *nameLbl = new QLabel(name);
-    nameLbl->setStyleSheet("color: #7aa2f7; font-size: 18px; font-weight: bold; background: transparent;");
+    nameLbl->setStyleSheet("color: #c0caf5; font-size: 15px; font-weight: 600; background: transparent;");
     lay->addWidget(nameLbl);
 
-    QCheckBox *autoCb = new QCheckBox("Auto-Mount on Startup");
+    lay->addStretch(); 
+
+    QCheckBox *autoCb = new QCheckBox("Auto-Mount");
     autoCb->setCursor(Qt::PointingHandCursor);
     autoCb->setStyleSheet(R"(
-        QCheckBox { color: #a9b1d6; background: transparent; font-size: 12px; font-weight: bold; }
-        QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #414868; background: #1a1b26; }
+        QCheckBox { color: #737aa2; background: transparent; font-size: 13px; font-weight: 500; margin-right: 20px; }
+        QCheckBox::indicator { width: 14px; height: 14px; border-radius: 3px; border: 1px solid #414868; background: #1a1b26; }
         QCheckBox::indicator:checked { background: #7aa2f7; border: 1px solid #7aa2f7; image: url(:/icons/check.svg); }
     )");
     
@@ -191,45 +251,58 @@ void DrivesPage::addDriveCard(const QString &name) {
     connect(autoCb, &QCheckBox::toggled, [name](bool c){ QSettings s("Kino", "AutoMount"); s.setValue(name, c); });
     lay->addWidget(autoCb);
 
-    lay->addStretch();
-
-    QHBoxLayout *btnLay = new QHBoxLayout();
-    QPushButton *mntBtn = new QPushButton("Mount Drive");
-    mntBtn->setCursor(Qt::PointingHandCursor);
-    mntBtn->setFixedHeight(36);
+    QWidget *btnContainer = new QWidget();
+    btnContainer->setFixedWidth(120); 
+    QHBoxLayout *btnLay = new QHBoxLayout(btnContainer);
+    btnLay->setContentsMargins(0, 0, 0, 0);
+    btnLay->setSpacing(10);
     
-    QPushButton *scanBtn = new QPushButton();
-    QPixmap scanPix = QIcon(":/icons/search.svg").pixmap(24, 24);
-    QImage img = scanPix.toImage();
-    img.invertPixels(QImage::InvertRgb);
-    scanBtn->setIcon(QIcon(QPixmap::fromImage(img)));
-    scanBtn->setIconSize(QSize(20, 20));
-    scanBtn->setCursor(Qt::PointingHandCursor);
-    scanBtn->setStyleSheet("QPushButton { background: #1a1b26; border-radius: 8px; border: 1px solid #414868; color: white; font-size: 16px; } QPushButton:hover { background: #414868; border: 1px solid #7aa2f7; }");
+    QPushButton *filterBtn = new QPushButton();
+    QPixmap filterPix = QIcon(":/icons/settings.svg").pixmap(24, 24);
+    QImage fImg = filterPix.toImage();
+    fImg.invertPixels(QImage::InvertRgb);
+    filterBtn->setIcon(QIcon(QPixmap::fromImage(fImg)));
+    filterBtn->setIconSize(QSize(16, 16));
+    filterBtn->setCursor(Qt::PointingHandCursor);
+    filterBtn->setFixedSize(32, 32);
+    filterBtn->setStyleSheet(R"(
+        QPushButton { background: transparent; border-radius: 4px; border: 1px solid #414868; color: white; } 
+        QPushButton:hover { background: #292e42; border: 1px solid #e0af68; } 
+    )");
+
+    connect(filterBtn, &QPushButton::clicked, [this, name](){ 
+        showFilterDialog(name, this); 
+    });
+
+    QPushButton *mntBtn = new QPushButton("Mount");
+    mntBtn->setCursor(Qt::PointingHandCursor);
+    mntBtn->setFixedHeight(32);
     
     m_drives[name].btn = mntBtn; 
-    scanBtn->setVisible(m_drives[name].isMounted);
 
     connect(mntBtn, &QPushButton::clicked, [this, name](){ toggleMount(name); });
-    connect(scanBtn, &QPushButton::clicked, [this, name](){ 
-        if (m_drives[name].isMounted) emit scanRequested(m_drives[name].mountPath); 
-    });
 
     if (m_drives[name].isMounted) {
         mntBtn->setText("Unmount");
-        mntBtn->setStyleSheet("background: #f7768e; color: #1a1b26; border-radius: 8px; font-weight: bold; font-size: 14px; border: none;");
+        mntBtn->setStyleSheet(R"(
+            QPushButton { background: transparent; color: #f7768e; border: 1px solid rgba(247, 118, 142, 0.5); border-radius: 4px; font-weight: bold; font-size: 13px; }
+            QPushButton:hover { background: rgba(247, 118, 142, 0.1); border: 1px solid #f7768e; }
+        )");
     } else {
         mntBtn->setText("Mount");
-        mntBtn->setStyleSheet("background: #7aa2f7; color: #1a1b26; border-radius: 8px; font-weight: bold; font-size: 14px; border: none;");
+        mntBtn->setStyleSheet(R"(
+            QPushButton { background: transparent; color: #7aa2f7; border: 1px solid rgba(122, 162, 247, 0.5); border-radius: 4px; font-weight: bold; font-size: 13px; }
+            QPushButton:hover { background: rgba(122, 162, 247, 0.1); border: 1px solid #7aa2f7; }
+        )");
     }
 
+    btnLay->addWidget(filterBtn);
     btnLay->addWidget(mntBtn, 1);
-    btnLay->addWidget(scanBtn);
-    lay->addLayout(btnLay);
+    lay->addWidget(btnContainer);
 
     QListWidgetItem *item = new QListWidgetItem(m_list);
-    item->setSizeHint(card->size());
-    m_list->setItemWidget(item, card);
+    item->setSizeHint(rowWidget->size());
+    m_list->setItemWidget(item, rowWidget);
 }
 
 void DrivesPage::toggleMount(const QString &remote) {
@@ -277,7 +350,10 @@ void DrivesPage::startMount(const QString &remote) {
     
     if (m_drives[remote].btn) { 
         m_drives[remote].btn->setText("Unmount");
-        m_drives[remote].btn->setStyleSheet("background-color: #f7768e; color: #1a1b26; border-radius: 6px; font-weight: bold;");
+        m_drives[remote].btn->setStyleSheet(R"(
+            QPushButton { background: transparent; color: #f7768e; border: 1px solid rgba(247, 118, 142, 0.5); border-radius: 4px; font-weight: bold; font-size: 13px; }
+            QPushButton:hover { background: rgba(247, 118, 142, 0.1); border: 1px solid #f7768e; }
+        )");
     }
     emit mountsChanged(); 
 }
@@ -293,7 +369,10 @@ void DrivesPage::stopMount(const QString &remote) {
     
     if (state.btn) {
         state.btn->setText("Mount");
-        state.btn->setStyleSheet("background-color: #7aa2f7; color: #1a1b26; border-radius: 6px; font-weight: bold;");
+        state.btn->setStyleSheet(R"(
+            QPushButton { background: transparent; color: #7aa2f7; border: 1px solid rgba(122, 162, 247, 0.5); border-radius: 4px; font-weight: bold; font-size: 13px; }
+            QPushButton:hover { background: rgba(122, 162, 247, 0.1); border: 1px solid #7aa2f7; }
+        )");
     }
     emit mountsChanged(); 
 }

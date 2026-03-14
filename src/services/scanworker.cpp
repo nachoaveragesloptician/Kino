@@ -1,5 +1,7 @@
 #include "scanworker.h"
 #include <QThread>
+#include <QSettings>
+#include <QFileInfo>
 
 ScanWorker::ScanWorker(const QStringList &mounts) : m_mounts(mounts) {}
 
@@ -17,9 +19,27 @@ void ScanWorker::process() {
             if (m_stopRequested) break;
         }
 
+        QString driveName = QFileInfo(mount).fileName();
+
+        QSettings settings("Kino", "DriveFilters");
+        QStringList rawWhite = settings.value(driveName + "_whitelist", "").toString().split("\n", Qt::SkipEmptyParts);
+        QStringList rawBlack = settings.value(driveName + "_blacklist", "").toString().split("\n", Qt::SkipEmptyParts);
+
+        QStringList whitelist, blacklist;
+        for (QString &w : rawWhite) {
+            w = w.trimmed().toLower();
+            if (!w.endsWith("/")) w += "/";
+            whitelist.append(w);
+        }
+        for (QString &b : rawBlack) {
+            b = b.trimmed().toLower();
+            if (!b.endsWith("/")) b += "/";
+            blacklist.append(b);
+        }
+
         QDir dir(mount);
         if (dir.exists()) {
-            scanRecursive(dir, mount, buffer);
+            scanRecursive(dir, mount, buffer, whitelist, blacklist);
         }
     }
 
@@ -29,7 +49,7 @@ void ScanWorker::process() {
     emit finished();
 }
 
-void ScanWorker::scanRecursive(const QDir &dir, const QString &rootMount, QList<VideoFile> &buffer) {
+void ScanWorker::scanRecursive(const QDir &dir, const QString &rootMount, QList<VideoFile> &buffer, const QStringList &whitelist, const QStringList &blacklist) {
     {
         QMutexLocker locker(&m_mutex);
         if (m_stopRequested) return;
@@ -40,7 +60,29 @@ void ScanWorker::scanRecursive(const QDir &dir, const QString &rootMount, QList<
 
     for (const QFileInfo &info : list) {
         if (info.isDir()) {
-            scanRecursive(QDir(info.filePath()), rootMount, buffer);
+            QString relativePath = QDir(rootMount).relativeFilePath(info.filePath()).toLower() + "/";
+
+            bool isBlacklisted = false;
+            for (const QString &b : blacklist) {
+                if (relativePath.startsWith(b)) {
+                    isBlacklisted = true;
+                    break;
+                }
+            }
+            if (isBlacklisted) continue;
+
+            if (!whitelist.isEmpty()) {
+                bool allowedToEnter = false;
+                for (const QString &w : whitelist) {
+                    if (relativePath.startsWith(w) || w.startsWith(relativePath)) {
+                        allowedToEnter = true;
+                        break;
+                    }
+                }
+                if (!allowedToEnter) continue; 
+            }
+
+            scanRecursive(QDir(info.filePath()), rootMount, buffer, whitelist, blacklist);
         } 
         else if (info.isFile()) {
             if (allowed.contains(info.suffix().toLower())) {

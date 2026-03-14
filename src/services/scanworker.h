@@ -30,5 +30,5 @@ private:
     QMutex m_mutex;
     bool m_stopRequested = false;
 
-    void scanRecursive(const QDir &dir, const QString &rootMount, QList<VideoFile> &buffer);
+    void scanRecursive(const QDir &dir, const QString &rootMount, QList<VideoFile> &buffer, const QStringList &whitelist, const QStringList &blacklist);
 };
