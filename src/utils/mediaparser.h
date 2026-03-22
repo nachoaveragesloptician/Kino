@@ -9,6 +9,8 @@ struct MediaInfo {
     QString originalPath;
     QString seriesName;
     QString seasonEpisode;
+    QString seasonNumber;
+    QString episodeNumber;
 };
 
 class MediaParser {
@@ -41,6 +43,8 @@ public:
             QString e = seriesMatch.captured(3);
             if (s.length() == 1) s = "0" + s;
             if (e.length() == 1) e = "0" + e;
+            info.seasonNumber = s;
+            info.episodeNumber = e;
             info.seasonEpisode = QString("S%1 E%2").arg(s, e);
         } else {
             info.isSeries = false;

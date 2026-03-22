@@ -24,10 +24,15 @@ void MediaDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option,
     painter->setRenderHint(QPainter::SmoothPixmapTransform);
 
     bool isHovered = option.state & QStyle::State_MouseOver;
+    bool isSelected = option.state & QStyle::State_Selected;
     QString title = index.data(Qt::DisplayRole).toString();
     QString subtitle = index.data(SubtitleRole).toString();
     bool isDefaultIcon = index.data(IsDefaultIconRole).toBool();
     QIcon icon = index.data(Qt::DecorationRole).value<QIcon>();
+
+    QString season = index.data(SeasonRole).toString();
+    QString episode = index.data(EpisodeRole).toString();
+    bool isEpisodeTitle = (!season.isEmpty() && !episode.isEmpty() && title == QString("S%1 E%2").arg(season, episode));
 
     QRect cardRect = option.rect.adjusted(5, 5, -5, -15);
     int cornerRadius = 10;
@@ -52,12 +57,31 @@ void MediaDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option,
             QSize scaledSize = pm.size().scaled(cardRect.size(), Qt::KeepAspectRatioByExpanding);
             QRect pixRect(QPoint(0, 0), scaledSize);
             pixRect.moveCenter(cardRect.center());
-            painter->drawPixmap(pixRect, pm);
+
+            if (!season.isEmpty() && !episode.isEmpty()) {
+                QPixmap smallPm = pm.scaled(scaledSize.width() / 4, scaledSize.height() / 4, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                QPixmap blurredPm = smallPm.scaled(scaledSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                painter->drawPixmap(pixRect, blurredPm);
+            } else {
+                painter->drawPixmap(pixRect, pm);
+            }
         }
     }
 
-    if (isHovered) {
-        painter->fillRect(cardRect, QColor(255, 255, 255, 25)); 
+    if (!season.isEmpty() && !episode.isEmpty()) {
+        QString seText = QString("S%1\nE%2").arg(season, episode);
+        
+        QFont seasonFont = option.font;
+        seasonFont.setPixelSize(m_cardWidth / 4.5);
+        seasonFont.setWeight(QFont::Black);
+        seasonFont.setLetterSpacing(QFont::AbsoluteSpacing, -1);
+        painter->setFont(seasonFont);
+        
+        painter->setPen(QColor(0, 0, 0, 180));
+        painter->drawText(cardRect.translated(2, 3), Qt::AlignCenter, seText);
+        
+        painter->setPen(QColor(255, 255, 255, 245));
+        painter->drawText(cardRect, Qt::AlignCenter, seText);
     }
 
     QRect overlayRect = cardRect;
@@ -70,20 +94,23 @@ void MediaDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option,
 
     painter->setClipping(false);
 
-    QFont titleFont = option.font;
-    titleFont.setPixelSize(14);
-    titleFont.setBold(true);
-    painter->setFont(titleFont);
-    painter->setPen(QColor("#ffffff"));
-
-    QFontMetrics fmTitle(titleFont);
-    QString elidedTitle = fmTitle.elidedText(title, Qt::ElideRight, cardRect.width() - 20);
-    
     QRect titleRect = cardRect;
     titleRect.setTop(cardRect.bottom() - 35);
     titleRect.setLeft(cardRect.left() + 10);
     titleRect.setRight(cardRect.right() - 10);
-    painter->drawText(titleRect, Qt::AlignLeft | Qt::AlignTop, elidedTitle);
+
+    if (!isEpisodeTitle) {
+        QFont titleFont = option.font;
+        titleFont.setPixelSize(14);
+        titleFont.setBold(true);
+        painter->setFont(titleFont);
+        painter->setPen(QColor("#ffffff"));
+
+        QFontMetrics fmTitle(titleFont);
+        QString elidedTitle = fmTitle.elidedText(title, Qt::ElideRight, cardRect.width() - 20);
+        
+        painter->drawText(titleRect, Qt::AlignLeft | Qt::AlignTop, elidedTitle);
+    }
 
     if (!subtitle.isEmpty()) {
         QFont subFont = option.font;
@@ -93,12 +120,28 @@ void MediaDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option,
         QFontMetrics fmSub(subFont);
         int subWidth = fmSub.horizontalAdvance(subtitle) + 12;
         int subHeight = fmSub.height() + 4;
-        QRect badgeRect(cardRect.left() + 10, titleRect.top() - subHeight - 4, subWidth, subHeight);
+        int badgeY = isEpisodeTitle ? cardRect.bottom() - subHeight - 12 : titleRect.top() - subHeight - 4;
+        QRect badgeRect(cardRect.left() + 10, badgeY, subWidth, subHeight);
         painter->setPen(Qt::NoPen);
         painter->setBrush(QColor("#7aa2f7"));
         painter->drawRoundedRect(badgeRect, subHeight / 2, subHeight / 2);
         painter->setPen(QColor("#1a1b26"));
         painter->drawText(badgeRect, Qt::AlignCenter, subtitle);
+    }
+
+    if (isSelected) {
+        QColor accentColor("#7aa2f7"); 
+        
+        painter->setPen(QPen(accentColor, 3)); 
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRoundedRect(cardRect, cornerRadius, cornerRadius);
+        
+        painter->setPen(QPen(QColor(122, 162, 247, 80), 6)); 
+        painter->drawRoundedRect(cardRect, cornerRadius, cornerRadius);
+    } else if (isHovered) {
+        painter->setPen(QPen(QColor(255, 255, 255, 140), 2));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRoundedRect(cardRect, cornerRadius, cornerRadius);
     }
 
     painter->restore();

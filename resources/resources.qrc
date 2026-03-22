@@ -16,7 +16,7 @@
         <file>icons/pause.svg</file>
         <file>icons/check.svg</file>
         <file>icons/search.svg</file>
-        <file>fonts/OpenSans-VariableFont.ttf</file>
+        <file>fonts/DMSans-VariableFont.ttf</file>
         <file>icons/hourglass.svg</file>
         <file>icons/empty.svg</file>
     </qresource>

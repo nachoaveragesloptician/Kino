@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QStyledItemDelegate>
+#include <QFont>
 
 class MediaDelegate : public QStyledItemDelegate
 {
@@ -16,4 +17,7 @@ public:
 
 private:
     int m_cardWidth = 200;
+    QFont m_font;
+    QFont m_subFont;
+    QFont m_seasonFont;
 };

@@ -27,7 +27,7 @@
 #include <QListWidget>
 #include <QDialog>
 #include <QDialogButtonBox>
-
+#include <QCoreApplication>
 FileView::FileView(QWidget *parent) : QWidget(parent)
 {
     QHBoxLayout *mainLayout = new QHBoxLayout(this);
@@ -141,12 +141,23 @@ FileView::FileView(QWidget *parent) : QWidget(parent)
     QScroller::grabGesture(m_view->viewport(), QScroller::LeftMouseButtonGesture);
     connect(m_view, &QListView::clicked, this, &FileView::onItemClicked);
     m_view->viewport()->installEventFilter(this);
+    m_view->setMouseTracking(true);
+    m_view->viewport()->setAttribute(Qt::WA_Hover);
     leftLayout->addWidget(m_view, 1);
 
     m_emptyWidget = new QWidget(this);
     QVBoxLayout *emptyLayout = new QVBoxLayout(m_emptyWidget);
     emptyLayout->setAlignment(Qt::AlignCenter);
-    m_emptyIconLabel = new QLabel("📁", m_emptyWidget);
+    m_emptyIconLabel = new QLabel(m_emptyWidget);
+    QPixmap emptyPix = QIcon(":/icons/empty.svg").pixmap(80, 80);
+    if (!emptyPix.isNull()) {
+        QPainter painter(&emptyPix);
+        painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+        painter.fillRect(emptyPix.rect(), QColor("#3b4261")); 
+        painter.end();
+    }
+
+m_emptyIconLabel->setPixmap(emptyPix);
     m_emptyIconLabel->setStyleSheet("font-size: 80px; color: #3b4261; background: transparent;");
     m_emptyIconLabel->setAlignment(Qt::AlignCenter);
     emptyLayout->addWidget(m_emptyIconLabel);
@@ -549,6 +560,8 @@ void FileView::setMounts(const QStringList &mountPaths) {
 
     m_emptyWidget->show();
 
+    QCoreApplication::processEvents();
+
     QTimer::singleShot(50, this, [this]() {
         loadFromCache();
     });
@@ -568,16 +581,24 @@ void FileView::loadFromCache() {
         m_groupItems.clear();
 
         for (const QString &mount : m_currentMounts) {
-            if (root.contains(mount)) {
-                QJsonArray arr = root[mount].toArray();
-                QList<VideoFile> batch;
-                for (const QJsonValue &val : arr) {
-                    QJsonObject obj = val.toObject();
-                    batch.append({obj["name"].toString(), obj["path"].toString(), mount});
-                }
-                if (!batch.isEmpty()) onBatchFound(batch);
-            }
+    if (root.contains(mount)) {
+        QJsonArray arr = root[mount].toArray();
+        QList<VideoFile> batch;
+
+        for (int i = 0; i < arr.size(); ++i) {
+            QJsonObject obj = arr[i].toObject();
+            batch.append({obj["name"].toString(), obj["path"].toString(), mount});
+
+            if (i > 0 && i % 300 == 0)
+                QCoreApplication::processEvents();
         }
+
+        if (!batch.isEmpty()) {
+            onBatchFound(batch);
+            QCoreApplication::processEvents();
+        }
+    }
+}
         file.close();
     }
 
@@ -816,7 +837,7 @@ void FileView::onItemClicked(const QModelIndex &index) {
         QPushButton#playBtn { background: #7aa2f7; color: #1a1b26; }
         QPushButton#playBtn:hover { background: #89b4fa; }
 
-        /* Sleek Minimalist Scrollbars */
+
         QScrollBar:vertical { border: none; background: transparent; width: 8px; margin: 2px; }
         QScrollBar:horizontal { border: none; background: transparent; height: 8px; margin: 2px; }
         QScrollBar::handle:vertical, QScrollBar::handle:horizontal { background: #414868; border-radius: 4px; min-height: 20px; min-width: 20px; }
@@ -850,13 +871,12 @@ void FileView::onItemClicked(const QModelIndex &index) {
             connect(list, &QListWidget::itemDoubleClicked, [&dialog]() { dialog.accept(); });
             layout->addWidget(list);
             
-            // Custom Button Layout (No OS Emojis!)
             QHBoxLayout *btnLayout = new QHBoxLayout();
             btnLayout->addStretch();
             
             QPushButton *cancelBtn = new QPushButton("Cancel");
             QPushButton *playBtn = new QPushButton("Play");
-            playBtn->setObjectName("playBtn"); // Targets the bright blue CSS
+            playBtn->setObjectName("playBtn");
             
             connect(cancelBtn, &QPushButton::clicked, &dialog, &QDialog::reject);
             connect(playBtn, &QPushButton::clicked, &dialog, &QDialog::accept);
@@ -913,6 +933,14 @@ void FileView::onItemClicked(const QModelIndex &index) {
             subItem->setData(multiNames, Qt::UserRole + 51);    
             subItem->setData(false, IsStackRole);
             subItem->setData(false, IsDefaultIconRole);
+
+            if (!epFiles.isEmpty()) {
+                MediaInfo info = MediaParser::parse(epFiles.first().name, epFiles.first().path);
+                if (info.isSeries) {
+                    subItem->setData(info.seasonNumber, SeasonRole);
+                    subItem->setData(info.episodeNumber, EpisodeRole);
+                }
+            }
             
             if (epFiles.size() > 1) {
                 subItem->setData(QString("%1 Versions").arg(epFiles.size()), SubtitleRole);
@@ -926,6 +954,7 @@ void FileView::onItemClicked(const QModelIndex &index) {
             m_model->appendRow(subItem);
         }
         updateGridSize();
+        m_view->verticalScrollBar()->setValue(0);
         
         if (!epKeys.isEmpty()) {
             QString firstEp = epKeys.first();

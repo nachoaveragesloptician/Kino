@@ -9,6 +9,7 @@
 #include <QPainter>
 #include <QMouseEvent>
 #include <QLocale>
+#include <QPushButton>
 
 BrowseDelegate::BrowseDelegate(QObject *parent) : QStyledItemDelegate(parent) {}
 
@@ -139,6 +140,18 @@ BrowsePage::BrowsePage(QWidget *parent) : QWidget(parent)
     m_pathLabel->setStyleSheet("color: #7aa2f7; font-size: 32px; font-weight: 800; background: transparent; border: none;");
     headerLayout->addWidget(m_pathLabel);
     headerLayout->addStretch();
+
+    QPushButton *refreshBtn = new QPushButton("Refresh", headerContainer);
+    refreshBtn->setCursor(Qt::PointingHandCursor);
+    refreshBtn->setFixedHeight(40);
+    refreshBtn->setStyleSheet(R"(
+        QPushButton { background: #2f3549; color: #c0caf5; border-radius: 20px; padding: 0 20px; font-weight: bold; font-size: 14px; border: none; }
+        QPushButton:hover { background: #414868; }
+        QPushButton:pressed { background: #7aa2f7; color: #1a1b26; }
+    )");
+    connect(refreshBtn, &QPushButton::clicked, this, &BrowsePage::refresh);
+    headerLayout->addWidget(refreshBtn);
+
     layout->addWidget(headerContainer);
 
     QWidget *contentWidget = new QWidget(this);
@@ -208,7 +221,18 @@ BrowsePage::BrowsePage(QWidget *parent) : QWidget(parent)
     checkEmptyState();
 }
 
-void BrowsePage::refresh() { reload(); }
+void BrowsePage::refresh() {
+    QString savedPath = m_currentPath; 
+    m_view->setModel(nullptr);
+    delete m_model;
+    m_model = new QFileSystemModel(this);
+    m_model->setFilter(QDir::NoDotAndDotDot | QDir::AllEntries);
+    m_model->setRootPath(m_rootPath);
+    m_view->setModel(m_model);
+    onDirectoryLoaded(savedPath); 
+    reload();
+}
+
 void BrowsePage::reload() { checkEmptyState(); }
 
 void BrowsePage::checkEmptyState() {

@@ -32,7 +32,7 @@ int main(int argc, char *argv[])
     app.setApplicationDisplayName("Kino");
     app.setDesktopFileName("Kino");
     QString fontFamily = "Sans Serif";
-    int fontId = QFontDatabase::addApplicationFont(":/fonts/OpenSans-VariableFont.ttf");
+    int fontId = QFontDatabase::addApplicationFont(":/fonts/DMSans-VariableFont.ttf");
     if (fontId != -1) {
         fontFamily = QFontDatabase::applicationFontFamilies(fontId).at(0);
         QFont appFont(fontFamily);

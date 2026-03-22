@@ -31,7 +31,9 @@ enum MediaRole {
     SubtitleRole,
     BackdropRole,
     TmdbDataRole,
-    ProgressRole
+    ProgressRole,
+    SeasonRole,
+    EpisodeRole
 };
 
 class FileView : public QWidget
