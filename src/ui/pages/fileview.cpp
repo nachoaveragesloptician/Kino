@@ -898,6 +898,7 @@ void FileView::onItemClicked(const QModelIndex &index) {
         QVariant parentTmdb = index.data(TmdbDataRole);
         QVariant parentBackdrop = index.data(BackdropRole);
         QIcon parentIcon = index.data(Qt::DecorationRole).value<QIcon>(); 
+        m_searchBar->clear();
 
         m_mainLibraryItems.clear();
         while (m_model->rowCount() > 0) m_mainLibraryItems.append(m_model->takeRow(0).at(0));
